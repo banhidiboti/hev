@@ -1,6 +1,6 @@
 {
   "name": "H5 Figyelő",
-  "short_name": "H5",
+  "short_name": "H5 FIGYELŐ",
   "description": "H5 HÉV valós idejű vonatkövetés",
   "start_url": "./",
   "display": "standalone",
