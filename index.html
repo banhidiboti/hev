@@ -150,12 +150,12 @@
     /* ── Alsó lap ────────────────────────────────── */
     #sheet {
       position: fixed; bottom: 0; left: 0; right: 0;
-      height: 92vh;
+      height: calc(100dvh - 50px);
       background: var(--surface);
       border-radius: 20px 20px 0 0;
       border-top: 1px solid var(--border);
       box-shadow: 0 -8px 32px var(--shadow);
-      transform: translateY(92vh);
+      transform: translateY(100vh);
       transition: transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s;
       z-index: 500;
       display: flex; flex-direction: column;
@@ -309,9 +309,7 @@ let vehicleCache = {};
 let sheetState   = 'hidden';
 
 // ── Témaváltás ────────────────────────────────────
-const SHEET_H      = 0.92;
-const PEEK_FRAC    = 0.50;
-const PEEK_TRANS   = SHEET_H - PEEK_FRAC;
+const PEEK_FRAC = 0.50;
 
 function applyTheme(theme, animated) {
   currentTheme = theme;
@@ -467,10 +465,12 @@ function setSheetState(state, animate = true) {
   sheet.style.transition = animate
     ? 'transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s'
     : 'background .25s, border-color .25s';
-  const vh = window.innerHeight;
+  const vh     = window.innerHeight;
+  const sheetH = sheet.offsetHeight;
+  const peekY  = sheetH - vh * PEEK_FRAC;
   sheet.style.transform =
-    state === 'hidden' ? `translateY(${vh * SHEET_H}px)` :
-    state === 'peek'   ? `translateY(${vh * PEEK_TRANS}px)` :
+    state === 'hidden' ? `translateY(${sheetH}px)` :
+    state === 'peek'   ? `translateY(${peekY}px)` :
                          'translateY(0)';
   document.getElementById('sheet-hint').style.display =
     state === 'peek' ? 'block' : 'none';
@@ -506,19 +506,20 @@ sheetHandle.addEventListener('touchstart', e => {
 
 sheetHandle.addEventListener('touchmove', e => {
   if (dragStartY === null) return;
-  const vh      = window.innerHeight;
-  const clamped = Math.max(0, Math.min(vh * SHEET_H, dragBase + e.touches[0].clientY - dragStartY));
+  const sheetH  = sheet.offsetHeight;
+  const clamped = Math.max(0, Math.min(sheetH, dragBase + e.touches[0].clientY - dragStartY));
   sheet.style.transform = `translateY(${clamped}px)`;
 }, { passive: true });
 
 sheetHandle.addEventListener('touchend', () => {
   if (dragStartY === null) return;
-  const vh      = window.innerHeight;
-  const cur     = getTranslateY();
-  const peekY   = vh * PEEK_TRANS;
-  if (cur < peekY / 2)                    setSheetState('full');
-  else if (cur < (peekY + vh * SHEET_H) / 2) setSheetState('peek');
-  else                                     closeSheet();
+  const vh     = window.innerHeight;
+  const sheetH = sheet.offsetHeight;
+  const cur    = getTranslateY();
+  const peekY  = sheetH - vh * PEEK_FRAC;
+  if (cur < peekY / 2)                   setSheetState('full');
+  else if (cur < (peekY + sheetH) / 2)  setSheetState('peek');
+  else                                   closeSheet();
   dragStartY = null; dragBase = null;
 });
 
