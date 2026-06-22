@@ -166,6 +166,7 @@
       z-index: 500;
       display: flex; flex-direction: column;
       will-change: transform;
+      overflow: hidden;
     }
 
     #sheet-handle {
@@ -243,9 +244,73 @@
     .sb-stop-row.past { opacity: 0.4; }
     .sb-loading { padding: 20px 16px; color: var(--muted); text-align: center; font-size: .85rem; }
 
+    /* ── Megálló indulási lap ────────────────────── */
+    .sd-group { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sd-group:last-child { border-bottom: none; }
+    .sd-dest-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .sd-dest-name { font-size: .95rem; font-weight: 700; }
+    .sd-dep-row {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 6px 0 6px 18px;
+      border-bottom: 1px solid var(--bg);
+    }
+    .sd-dep-row:last-child { border-bottom: none; }
+    .sd-min { font-size: .88rem; font-weight: 600; }
+    .sd-min.soon { color: #4ade80; font-weight: 700; }
+    .sd-clock { font-size: .82rem; color: var(--meta); font-variant-numeric: tabular-nums; }
+    .sd-later-btn {
+      display: block; width: calc(100% - 36px); margin: 6px 18px 8px;
+      padding: 7px 12px; background: var(--bg); color: var(--meta);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: .78rem; font-family: inherit; cursor: pointer; text-align: center;
+    }
+    .sd-later-btn:active { background: var(--border); }
+
     /* ── Mobil: +- a lap mögé kerül ─────────────── */
     @media (max-width: 869px) {
       .leaflet-top.leaflet-left { z-index: 400 !important; }
+    }
+
+    /* ── Részletlap (Későbbi járatok) ───────────────── */
+    #detail-panel {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: calc(100dvh - 50px);
+      background: var(--surface);
+      border-radius: 20px 20px 0 0;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -8px 32px var(--shadow);
+      transition: transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s;
+      z-index: 600;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      will-change: transform;
+    }
+    #dp-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #dp-back {
+      background: none; border: none; color: var(--accent);
+      font-size: 1.5rem; font-weight: 700; cursor: pointer;
+      padding: 2px 4px; line-height: 1; flex-shrink: 0;
+    }
+    #dp-title-wrap { flex: 1; min-width: 0; }
+    #dp-stop-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    #dp-stop-name { font-size: 1.05rem; font-weight: 700; }
+    #dp-body {
+      flex: 1; min-height: 0; overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+    #dp-list { padding: 0 16px; }
+    #dp-handle {
+      padding: 10px 0 8px;
+      display: flex; justify-content: center; align-items: center;
+      flex-shrink: 0; cursor: grab; touch-action: none;
     }
 
     /* ── Asztali nézet (≥870px) ──────────────────── */
@@ -259,7 +324,15 @@
         border-right: 1px solid var(--border);
         box-shadow: 8px 0 24px var(--shadow);
       }
-      #sheet-handle { display: none; }
+      #detail-panel {
+        top: 50px; bottom: 0;
+        left: 0; right: auto; width: 340px;
+        height: auto;
+        border-radius: 0; border-top: none;
+        border-right: 1px solid var(--border);
+        box-shadow: 8px 0 24px var(--shadow);
+      }
+      #sheet-handle, #dp-handle { display: none; }
       .leaflet-top.leaflet-left { left: auto; right: 10px; }
     }
   </style>
@@ -285,19 +358,32 @@
   <div id="sheet-handle"><div class="handle-bar"></div></div>
 
   <div id="sheet-peek">
-    <div class="sp-destination" style="margin-bottom:6px">
-      <span class="sp-arrow">→</span>
-      <span class="sp-dest" id="sp-destination">—</span>
-      <span class="sp-route" style="margin-left:auto">H5</span>
+    <div id="sp-vehicle">
+      <div class="sp-destination" style="margin-bottom:6px">
+        <span class="sp-arrow">→</span>
+        <span class="sp-dest" id="sp-destination">—</span>
+        <span class="sp-route" style="margin-left:auto">H5</span>
+      </div>
+      <div class="sp-row1">
+        <span class="sp-consist" id="sp-consist">—</span>
+        <span id="sp-status-badge" class="sp-status-badge moving">Menetben</span>
+      </div>
+      <div class="sp-next">
+        <span class="sp-next-label">Következő:</span>
+        <span class="sp-next-name" id="sp-next-name">—</span>
+        <span class="sp-next-time" id="sp-next-time">—</span>
+      </div>
     </div>
-    <div class="sp-row1">
-      <span class="sp-consist" id="sp-consist">—</span>
-      <span id="sp-status-badge" class="sp-status-badge moving">Menetben</span>
-    </div>
-    <div class="sp-next">
-      <span class="sp-next-label">Következő:</span>
-      <span class="sp-next-name" id="sp-next-name">—</span>
-      <span class="sp-next-time" id="sp-next-time">—</span>
+    <div id="sp-stop" style="display:none">
+      <div class="sp-destination" style="margin-bottom:6px">
+        <span class="sp-dest" id="sps-name">—</span>
+        <span class="sp-route" style="margin-left:auto">H5</span>
+      </div>
+      <div class="sp-next">
+        <span class="sp-next-label">Következő:</span>
+        <span class="sp-next-name" id="sps-next-dest">—</span>
+        <span class="sp-next-time predicted" id="sps-next-time">—</span>
+      </div>
     </div>
   </div>
 
@@ -305,8 +391,31 @@
   <div id="sheet-hint" style="display:none"></div>
 
   <div id="sheet-body">
-    <div class="sb-list-title">Összes következő megálló</div>
+    <div class="sb-list-title" id="sb-list-title">Összes következő megálló</div>
     <div id="sb-stop-list"><div class="sb-loading">Betöltés…</div></div>
+    <div id="sb-departures" style="display:none"></div>
+  </div>
+
+</div>
+
+<div id="detail-panel">
+  <div id="dp-handle"><div class="handle-bar"></div></div>
+  <div id="dp-header">
+    <button id="dp-back" onclick="closeDetailPanel()">←</button>
+    <div id="dp-title-wrap">
+      <div id="dp-stop-name-row">
+        <span id="dp-stop-name">—</span>
+        <span class="sp-route" style="margin-left:auto">H5</span>
+      </div>
+      <div class="sd-dest-row" style="margin:0">
+        <span class="sp-arrow">→</span>
+        <span class="sd-dest-name" id="dp-dest-name">—</span>
+      </div>
+    </div>
+  </div>
+  <div id="dp-body">
+    <div class="sb-list-title" id="dp-list-title">Összes indulás</div>
+    <div id="dp-list"></div>
   </div>
 </div>
 
@@ -330,9 +439,16 @@ const STATUS_BADGE = {
 
 const API_KEY    = 'c2d63282-63f2-4a9d-873b-04f67dc9f56d';
 let currentTheme = localStorage.getItem('theme') || 'dark';
-let selectedId   = null;
-let vehicleCache = {};
-let sheetState   = 'hidden';
+let selectedId     = null;
+let selectedStopId = null;
+let vehicleCache   = {};
+let stopMarkers    = {};
+let sheetState     = 'hidden';
+let detailEntries  = [];
+let detailStopName = '';
+let detailNavStack = [];
+let detailState    = 'hidden';
+let stopRequestSeq = 0;
 
 // ── Témaváltás ────────────────────────────────────
 const PEEK_FRAC = 0.50;
@@ -396,16 +512,28 @@ function decodePolyline(encoded) {
 // ── Vonal és megállók (egyszer) ───────────────────
 let shapeLoaded = false, stopsLoaded = false;
 let routeCoords = [];
+let stopIdsForName = {};
 
 async function loadShapeAndStops() {
   try {
     const vd       = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
     const vehicles = vd.list || [];
     if (!vehicles.length) return;
-    const tripId   = vehicles[0].tripId;
-    const td       = await apiGet('trip-details', { tripId });
-    const entry    = td.entry || {};
-    const sref     = td.references?.stops || {};
+    const trRef    = vd.references?.trips || {};
+
+    // Collect one trip ID per direction (headsign)
+    const tripIds = [];
+    const seenSign = new Set();
+    for (const v of vehicles) {
+      const sign = trRef[v.tripId]?.tripHeadsign || '';
+      if (!seenSign.has(sign)) { seenSign.add(sign); tripIds.push(v.tripId); }
+      if (tripIds.length >= 2) break;
+    }
+
+    const tds   = await Promise.all(tripIds.map(id => apiGet('trip-details', { tripId: id })));
+    const td    = tds[0];
+    const entry = td.entry || {};
+    const sref  = td.references?.stops || {};
 
     if (!shapeLoaded && entry.polyline?.points) {
       routeCoords = decodePolyline(entry.polyline.points);
@@ -416,21 +544,37 @@ async function loadShapeAndStops() {
     }
 
     if (!stopsLoaded) {
+      // Build name → [stopIds] from all direction trips
+      stopIdsForName = {};
+      for (const t of tds) {
+        const sr = t.references?.stops || {};
+        for (const st of t.entry?.stopTimes || []) {
+          const s = sr[st.stopId] || {};
+          const name = s.name || st.stopId;
+          if (!stopIdsForName[name]) stopIdsForName[name] = [];
+          if (!stopIdsForName[name].includes(st.stopId)) stopIdsForName[name].push(st.stopId);
+        }
+      }
+
+      // Place one marker per stop name (using first trip's coordinates)
       const seen = new Set();
       for (const st of entry.stopTimes || []) {
-        if (seen.has(st.stopId)) continue;
-        seen.add(st.stopId);
         const s = sref[st.stopId] || {};
-        if (s.lat && s.lon) {
-          L.circleMarker([s.lat, s.lon], {
-            pane: 'stopsPane', radius: 5,
-            fillColor: '#fff', fillOpacity: 1, color: '#821066', weight: 2.5,
-          })
-          .bindTooltip(s.name || st.stopId, {
-            permanent: true, direction: 'right', offset: [9, 0], className: 'stop-label',
-          })
-          .addTo(map);
-        }
+        if (!s.lat || !s.lon) continue;
+        const sname = s.name || st.stopId;
+        if (seen.has(sname)) continue;
+        seen.add(sname);
+        const m = L.circleMarker([s.lat, s.lon], {
+          pane: 'stopsPane', radius: 5,
+          fillColor: '#fff', fillOpacity: 1, color: '#821066', weight: 2.5,
+          interactive: true,
+        })
+        .bindTooltip(sname, {
+          permanent: true, direction: 'right', offset: [9, 0], className: 'stop-label',
+        })
+        .addTo(map);
+        stopMarkers[st.stopId] = m;
+        m.on('click', e => { L.DomEvent.stopPropagation(e); selectStop(st.stopId, sname); });
       }
       stopsLoaded = true;
     }
@@ -551,6 +695,12 @@ function setSheetState(state, animate = true) {
 
 function closeSheet() {
   selectedId = null;
+  stopRequestSeq++;
+  if (selectedStopId && stopMarkers[selectedStopId]) {
+    stopMarkers[selectedStopId].setStyle({ radius: 5, weight: 2.5, fillColor: '#fff' });
+  }
+  selectedStopId = null;
+  resetDetailPanel();
   setSheetState('hidden');
   for (const id in vehicleCache) refreshIcon(id);
 }
@@ -558,35 +708,113 @@ function closeSheet() {
 let dragStartY = null, dragBase = null;
 function getTranslateY() { return new DOMMatrix(getComputedStyle(sheet).transform).m42; }
 
-sheetHandle.addEventListener('touchstart', e => {
-  dragStartY = e.touches[0].clientY;
-  dragBase   = getTranslateY();
-  sheet.style.transition = 'none';
-}, { passive: true });
+function attachHandleDrag(el) {
+  el.addEventListener('touchstart', e => {
+    dragStartY = e.touches[0].clientY;
+    dragBase   = getTranslateY();
+    sheet.style.transition = 'none';
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (dragStartY === null) return;
+    const sheetH  = sheet.offsetHeight;
+    const clamped = Math.max(0, Math.min(sheetH, dragBase + e.touches[0].clientY - dragStartY));
+    sheet.style.transform = `translateY(${clamped}px)`;
+  }, { passive: true });
+  el.addEventListener('touchend', () => {
+    if (dragStartY === null) return;
+    const vh     = window.innerHeight;
+    const sheetH = sheet.offsetHeight;
+    const cur    = getTranslateY();
+    const peekY  = sheetH - vh * PEEK_FRAC;
+    if (cur < peekY / 2)                   setSheetState('full');
+    else if (cur < (peekY + sheetH) / 2)  setSheetState('peek');
+    else                                   closeSheet();
+    dragStartY = null; dragBase = null;
+  });
+  el.addEventListener('click', () => {
+    if (sheetState === 'peek') setSheetState('full');
+    else if (sheetState === 'full') setSheetState('peek');
+  });
+}
 
-sheetHandle.addEventListener('touchmove', e => {
-  if (dragStartY === null) return;
-  const sheetH  = sheet.offsetHeight;
-  const clamped = Math.max(0, Math.min(sheetH, dragBase + e.touches[0].clientY - dragStartY));
-  sheet.style.transform = `translateY(${clamped}px)`;
-}, { passive: true });
+attachHandleDrag(sheetHandle);
 
-sheetHandle.addEventListener('touchend', () => {
-  if (dragStartY === null) return;
-  const vh     = window.innerHeight;
-  const sheetH = sheet.offsetHeight;
-  const cur    = getTranslateY();
-  const peekY  = sheetH - vh * PEEK_FRAC;
-  if (cur < peekY / 2)                   setSheetState('full');
-  else if (cur < (peekY + sheetH) / 2)  setSheetState('peek');
-  else                                   closeSheet();
-  dragStartY = null; dragBase = null;
-});
+// ── Részletlap mozgatás ───────────────────────────
+const detailPanel = document.getElementById('detail-panel');
 
-sheetHandle.addEventListener('click', () => {
-  if (sheetState === 'peek') setSheetState('full');
-  else if (sheetState === 'full') setSheetState('peek');
-});
+function getDetailTranslateY() { return new DOMMatrix(getComputedStyle(detailPanel).transform).m42; }
+
+function setDetailState(state, animate = true) {
+  detailState = state;
+  detailPanel.style.transition = animate
+    ? 'transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s'
+    : 'background .25s, border-color .25s';
+
+  const bodyEl = document.getElementById('dp-body');
+  if (window.innerWidth >= 870) {
+    detailPanel.style.transform = state === 'hidden' ? 'translateX(-100%)' : 'translateX(0)';
+    detailPanel.style.borderRadius = '';
+    bodyEl.style.overflowY = state === 'hidden' ? 'hidden' : 'auto';
+    bodyEl.style.maxHeight = '';
+    return;
+  }
+
+  const vh = window.innerHeight;
+  const panelH = detailPanel.offsetHeight;
+  const peekY  = panelH - vh * PEEK_FRAC;
+  detailPanel.style.transform =
+    state === 'hidden' ? `translateY(${panelH}px)` :
+    state === 'peek'   ? `translateY(${peekY}px)` :
+                         'translateY(0)';
+  detailPanel.style.borderRadius = state === 'full' ? '0' : '';
+
+  if (state === 'hidden') {
+    bodyEl.style.overflowY = 'hidden';
+    bodyEl.style.maxHeight = '';
+  } else if (state === 'peek') {
+    bodyEl.style.overflowY = 'auto';
+    const nonBody = document.getElementById('dp-handle').offsetHeight
+                  + document.getElementById('dp-header').offsetHeight;
+    bodyEl.style.maxHeight = Math.max(80, vh * PEEK_FRAC - nonBody) + 'px';
+  } else {
+    bodyEl.style.overflowY = 'auto';
+    bodyEl.style.maxHeight = '';
+  }
+}
+
+(function attachDetailHandleDrag() {
+  const el = document.getElementById('dp-handle');
+  let dragStartY = null, dragBase = null;
+  el.addEventListener('touchstart', e => {
+    dragStartY = e.touches[0].clientY;
+    dragBase   = getDetailTranslateY();
+    detailPanel.style.transition = 'none';
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (dragStartY === null) return;
+    const panelH  = detailPanel.offsetHeight;
+    const clamped = Math.max(0, Math.min(panelH, dragBase + e.touches[0].clientY - dragStartY));
+    detailPanel.style.transform = `translateY(${clamped}px)`;
+  }, { passive: true });
+
+  const settleDrag = () => {
+    if (dragStartY === null) return;
+    const panelH = detailPanel.offsetHeight;
+    const peekY  = panelH - window.innerHeight * PEEK_FRAC;
+    const cur    = getDetailTranslateY();
+    if (cur < peekY / 2)                  setDetailState('full');
+    else if (cur < (peekY + panelH) / 2)  setDetailState('peek');
+    else                                   closeDetailPanel();
+    dragStartY = null; dragBase = null;
+  };
+
+  el.addEventListener('touchend', settleDrag);
+  el.addEventListener('touchcancel', settleDrag);
+  el.addEventListener('click', () => {
+    if (detailState === 'peek') setDetailState('full');
+    else if (detailState === 'full') setDetailState('peek');
+  });
+})();
 
 map.on('click', closeSheet);
 
@@ -595,6 +823,248 @@ function fmtTime(ts) {
   if (!ts) return null;
   const d = new Date(ts * 1000);
   return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function displayMinuteTs(ts) {
+  return Math.floor(ts / 60) * 60;
+}
+
+function stopDisplayTime(st) {
+  return st.predictedDepartureTime || st.departureTime || st.predictedArrivalTime || st.arrivalTime;
+}
+
+function stopDisplayTimeIsPredicted(st) {
+  return !!(st.predictedDepartureTime || st.predictedArrivalTime);
+}
+
+function minutesUntil(ts) {
+  if (!ts) return null;
+  return Math.max(0, Math.round((displayMinuteTs(ts) * 1000 - Date.now()) / 60000));
+}
+
+function fmtMin(mins) {
+  if (mins === null) return '—';
+  if (mins <= 0) return 'Most';
+  if (mins < 60) return mins + ' perc';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h} óra` : `${h} óra ${m} perc`;
+}
+
+function setSheetMode(mode) {
+  document.getElementById('sp-vehicle').style.display    = mode === 'vehicle' ? '' : 'none';
+  document.getElementById('sp-stop').style.display       = mode === 'stop'    ? '' : 'none';
+  document.getElementById('sb-stop-list').style.display  = mode === 'vehicle' ? '' : 'none';
+  document.getElementById('sb-departures').style.display = mode === 'stop'    ? '' : 'none';
+  document.getElementById('sb-list-title').textContent   =
+    mode === 'stop' ? 'Következő indulások' : 'Összes következő megálló';
+}
+
+function depRow(t) {
+  const mins  = minutesUntil(t.ts);
+  const cls   = mins !== null && mins <= 5 ? ' soon' : '';
+  const click = t.tripId ? ` onclick="openTripDetail('${t.tripId}')" style="cursor:pointer"` : '';
+  return `<div class="sd-dep-row"${click}>
+    <span class="sd-min${cls}">${fmtMin(mins)}</span>
+    <span class="sd-clock">${fmtTime(t.ts) || ''}</span>
+  </div>`;
+}
+
+function openDetailPanel(idx) {
+  detailNavStack = [];
+  const entry = detailEntries[idx];
+  if (!entry) return;
+  const [dest, times] = entry;
+  document.getElementById('dp-list-title').textContent = 'Összes indulás';
+  document.getElementById('dp-stop-name').textContent = detailStopName;
+  document.getElementById('dp-dest-name').textContent = dest;
+  const html = times.map(depRow).join('');
+  document.getElementById('dp-list').innerHTML = html || '<div class="sb-loading">Nincs indulás</div>';
+  document.getElementById('dp-body').scrollTop = 0;
+  setDetailState(sheetState === 'full' ? 'full' : 'peek');
+}
+
+function resetDetailPanel() {
+  detailEntries = [];
+  detailStopName = '';
+  detailNavStack = [];
+  document.getElementById('dp-list-title').textContent = 'Összes indulás';
+  document.getElementById('dp-stop-name').textContent = '—';
+  document.getElementById('dp-dest-name').textContent = '—';
+  document.getElementById('dp-list').innerHTML = '';
+  document.getElementById('dp-body').scrollTop = 0;
+  setDetailState('hidden');
+}
+
+function closeDetailPanel() {
+  if (detailNavStack.length) {
+    const prev = detailNavStack.pop();
+    document.getElementById('dp-list-title').textContent = prev.title;
+    document.getElementById('dp-stop-name').textContent  = prev.stopName;
+    document.getElementById('dp-dest-name').textContent  = prev.destName;
+    document.getElementById('dp-list').innerHTML          = prev.html;
+    document.getElementById('dp-body').scrollTop          = 0;
+    setDetailState(sheetState === 'full' ? 'full' : 'peek');
+  } else {
+    setDetailState('hidden');
+  }
+}
+
+async function openTripDetail(tripId) {
+  const requestSeq = stopRequestSeq;
+  if (detailState !== 'hidden') {
+    detailNavStack.push({
+      title:    document.getElementById('dp-list-title').textContent,
+      stopName: document.getElementById('dp-stop-name').textContent,
+      destName: document.getElementById('dp-dest-name').textContent,
+      html:     document.getElementById('dp-list').innerHTML,
+    });
+  }
+  document.getElementById('dp-list-title').textContent = 'Megállók';
+  document.getElementById('dp-stop-name').textContent  = detailStopName;
+  document.getElementById('dp-dest-name').textContent  = '…';
+  document.getElementById('dp-list').innerHTML = '<div class="sb-loading">Betöltés…</div>';
+  if (detailState === 'hidden') setDetailState(sheetState === 'full' ? 'full' : 'peek');
+
+  try {
+    const td    = await apiGet('trip-details', { tripId });
+    if (requestSeq !== stopRequestSeq) return;
+
+    const entry = td.entry || {};
+    const sref  = td.references?.stops || {};
+    const times = entry.stopTimes || [];
+    const tripRef = Object.values(td.references?.trips || {})[0];
+    document.getElementById('dp-dest-name').textContent = tripRef?.tripHeadsign || '—';
+
+    const now = Date.now() / 1000;
+    let nextIdx = times.findIndex(st => (stopDisplayTime(st) || 0) > now);
+    if (nextIdx < 0) nextIdx = times.length;
+
+    const html = times.map((st, i) => {
+      const name   = sref[st.stopId]?.name || st.stopId;
+      const ts     = stopDisplayTime(st);
+      const isPast = i < nextIdx;
+      const isNext = i === nextIdx;
+      return `<div class="sb-stop-row${isPast ? ' past' : ''}">
+        <div class="sb-stop-left">
+          <div class="sb-dot${isNext ? ' next' : ''}"></div>
+          <span class="sb-stop-name${isNext ? ' next' : ''}">${name}</span>
+        </div>
+        <span class="sb-stop-time${isNext ? ' next-pred' : ''}">${fmtTime(ts) || '—'}</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('dp-list').innerHTML = html || '<div class="sb-loading">Nincs megálló</div>';
+    const nextRow = document.querySelector('#dp-list .sb-dot.next')?.closest('.sb-stop-row');
+    if (nextRow) setTimeout(() => nextRow.scrollIntoView({ block: 'nearest' }), 50);
+  } catch(e) {
+    if (requestSeq !== stopRequestSeq) return;
+    document.getElementById('dp-list').innerHTML = '<div class="sb-loading">Nem sikerült betölteni</div>';
+    console.warn('trip-details:', e);
+  }
+}
+
+async function selectStop(stopId, stopName) {
+  if (selectedStopId === stopId) { closeSheet(); return; }
+
+  const requestSeq = ++stopRequestSeq;
+  resetDetailPanel();
+
+  if (selectedId) { const p = selectedId; selectedId = null; refreshIcon(p); }
+
+  if (selectedStopId && stopMarkers[selectedStopId]) {
+    stopMarkers[selectedStopId].setStyle({ radius: 5, weight: 2.5, fillColor: '#fff' });
+  }
+  selectedStopId = stopId;
+  if (stopMarkers[stopId]) {
+    stopMarkers[stopId].setStyle({ radius: 8, weight: 3, fillColor: '#821066' });
+  }
+
+  setSheetMode('stop');
+  document.getElementById('sps-name').textContent       = stopName;
+  document.getElementById('sps-next-dest').textContent  = '—';
+  document.getElementById('sps-next-time').textContent  = '—';
+  document.getElementById('sb-departures').innerHTML    = '<div class="sb-loading">Betöltés…</div>';
+  setSheetState('peek');
+
+  try {
+    const allIds    = stopIdsForName[stopName] || [stopId];
+    const results   = await Promise.all(allIds.map(id =>
+      apiGet('arrivals-and-departures-for-stop', { stopId: id, minutesBefore: 0, minutesAfter: 360 })
+    ));
+    if (requestSeq !== stopRequestSeq || selectedStopId !== stopId) return;
+
+    const tripsRef  = {};
+    const allStopTimes = [];
+    for (const data of results) {
+      Object.assign(tripsRef, data.references?.trips || {});
+      allStopTimes.push(...(data.entry?.stopTimes || []));
+    }
+    const seenTrips = new Set();
+    const deps = allStopTimes
+      .map(d => {
+        const trip = tripsRef[d.tripId] || {};
+        return {
+          dest:   trip.tripHeadsign || '—',
+          ts:     d.predictedDepartureTime || d.departureTime,
+          pred:   !!d.predictedDepartureTime,
+          tripId: d.tripId,
+        };
+      })
+      .filter(d => {
+        if (!d.ts || seenTrips.has(d.tripId)) return false;
+        seenTrips.add(d.tripId);
+        return true;
+      });
+
+    const groups = {};
+    for (const d of deps) {
+      if (!groups[d.dest]) groups[d.dest] = [];
+      groups[d.dest].push({ ts: d.ts, pred: d.pred, tripId: d.tripId });
+    }
+    for (const dest in groups) {
+      const t = groups[dest];
+      const cutIdx = t.findIndex((v, i) => i > 0 && (v.ts - t[i-1].ts) > 90 * 60);
+      if (cutIdx !== -1) groups[dest] = t.slice(0, cutIdx);
+    }
+
+    const allSorted = [...deps].sort((a, b) => a.ts - b.ts);
+    if (allSorted.length) {
+      document.getElementById('sps-next-dest').textContent = allSorted[0].dest || '—';
+      document.getElementById('sps-next-time').textContent = fmtMin(minutesUntil(allSorted[0].ts));
+    }
+
+    const entries = Object.entries(groups).sort(([dA, tA], [dB, tB]) => {
+      const aLast = dA.toLowerCase().includes('békásmegyer');
+      const bLast = dB.toLowerCase().includes('békásmegyer');
+      if (aLast !== bLast) return aLast ? 1 : -1;
+      return (tA[0]?.ts || 0) - (tB[0]?.ts || 0);
+    });
+
+    detailEntries  = entries;
+    detailStopName = stopName;
+
+    const html = entries.map(([dest, times], idx) => {
+      const visible = times.slice(0, 3).map(depRow).join('');
+      const moreBtn = `<button class="sd-later-btn" onclick="openDetailPanel(${idx})">Összes későbbi járat</button>`;
+      return `<div class="sd-group">
+        <div class="sd-dest-row">
+          <span class="sp-arrow">→</span>
+          <span class="sd-dest-name">${dest}</span>
+        </div>
+        ${visible || '<div class="sd-dep-row"><span class="sd-min">Nincs indulás</span></div>'}
+        ${moreBtn}
+      </div>`;
+    }).join('');
+
+    document.getElementById('sb-departures').innerHTML =
+      html || '<div class="sb-loading">Nincs indulás</div>';
+  } catch(e) {
+    if (requestSeq !== stopRequestSeq || selectedStopId !== stopId) return;
+    document.getElementById('sb-departures').innerHTML =
+      '<div class="sb-loading">Nem sikerült betölteni az indulásokat</div>';
+    console.warn('arrivals-and-departures-for-stop:', e);
+  }
 }
 
 function fillSheetBasic(v) {
@@ -608,6 +1078,13 @@ function fillSheetBasic(v) {
 
 async function selectVehicle(id) {
   if (selectedId === id) { closeSheet(); return; }
+  stopRequestSeq++;
+  if (selectedStopId && stopMarkers[selectedStopId]) {
+    stopMarkers[selectedStopId].setStyle({ radius: 5, weight: 2.5, fillColor: '#fff' });
+  }
+  selectedStopId = null;
+  resetDetailPanel();
+  setSheetMode('vehicle');
   const prevId = selectedId;
   selectedId   = id;
   if (prevId) refreshIcon(prevId);
@@ -633,8 +1110,8 @@ async function selectVehicle(id) {
     const nextSt  = times[nextIdx];
 
     if (nextSt) {
-      const ts   = nextSt.predictedArrivalTime || nextSt.arrivalTime;
-      const pred = !!nextSt.predictedArrivalTime;
+      const ts   = stopDisplayTime(nextSt);
+      const pred = stopDisplayTimeIsPredicted(nextSt);
       document.getElementById('sp-next-name').textContent = sref[nextSt.stopId]?.name || nextSt.stopId;
       const tEl = document.getElementById('sp-next-time');
       tEl.textContent = fmtTime(ts) || '—';
@@ -658,8 +1135,8 @@ async function selectVehicle(id) {
 
     const futureHtml = remaining.map((st, i) => {
       const name   = sref[st.stopId]?.name || st.stopId;
-      const ts     = st.predictedArrivalTime || st.arrivalTime;
-      const pred   = !!st.predictedArrivalTime;
+      const ts     = stopDisplayTime(st);
+      const pred   = stopDisplayTimeIsPredicted(st);
       const isNext = i === 0;
       return `<div class="sb-stop-row">
         <div class="sb-stop-left">
@@ -741,6 +1218,7 @@ async function poll() {
 function init() {
   shapeLoaded = false; stopsLoaded = false;
   setSheetState('hidden', false);
+  setDetailState('hidden', false);
   loadShapeAndStops();
   poll();
 }
