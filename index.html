@@ -236,6 +236,26 @@
     .sb-stop-time.next-pred { color: #4ade80; font-weight: 600; }
     .sb-stop-row.past { opacity: 0.4; }
     .sb-loading { padding: 20px 16px; color: var(--muted); text-align: center; font-size: .85rem; }
+
+    /* ── Mobil: +- a lap mögé kerül ─────────────── */
+    @media (max-width: 869px) {
+      .leaflet-top.leaflet-left { z-index: 400 !important; }
+    }
+
+    /* ── Asztali nézet (≥870px) ──────────────────── */
+    @media (min-width: 870px) {
+      #sheet {
+        top: 50px; bottom: 0;
+        left: 0; right: auto;
+        width: 340px; height: auto;
+        border-radius: 0;
+        border-top: none;
+        border-right: 1px solid var(--border);
+        box-shadow: 8px 0 24px var(--shadow);
+      }
+      #sheet-handle { display: none; }
+      .leaflet-top.leaflet-left { left: auto; right: 10px; }
+    }
   </style>
 </head>
 <body>
@@ -341,7 +361,7 @@ async function apiGet(path, params = {}) {
 }
 
 // ── Térkép ────────────────────────────────────────
-const map = L.map('map', { zoomControl: true }).fitBounds(H5_BOUNDS, { padding: [24, 24] });
+const map = L.map('map', { zoomControl: true, zoomSnap: 0 }).fitBounds(H5_BOUNDS, { padding: [24, 24] });
 map.setMinZoom(map.getZoom() - 1);
 let tileLayer = L.tileLayer(TILE_URLS[currentTheme], { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
 // apply saved theme icon without swapping tile layer again
@@ -465,6 +485,16 @@ function setSheetState(state, animate = true) {
   sheet.style.transition = animate
     ? 'transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s'
     : 'background .25s, border-color .25s';
+
+  if (window.innerWidth >= 870) {
+    sheet.style.transform = state === 'hidden' ? 'translateX(-100%)' : 'translateX(0)';
+    document.getElementById('sheet-hint').style.display = 'none';
+    const bodyEl = document.getElementById('sheet-body');
+    bodyEl.style.overflowY = state === 'hidden' ? 'hidden' : 'auto';
+    bodyEl.style.maxHeight = '';
+    return;
+  }
+
   const vh     = window.innerHeight;
   const sheetH = sheet.offsetHeight;
   const peekY  = sheetH - vh * PEEK_FRAC;
