@@ -1,0 +1,17 @@
+{
+  "name": "H5 Figyelő",
+  "short_name": "H5",
+  "description": "H5 HÉV valós idejű vonatkövetés",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#008a75",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "Budapest_H5_HÉV.svg.png",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ]
+}
