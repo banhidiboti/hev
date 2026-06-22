@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="hu" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>H5 FIGYELŐ</title>
+  <link rel="icon" href="favicon.ico" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* ── Témaszínek ──────────────────────────────── */
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --border:    #334155;
+      --border2:   #2d3f55;
+      --muted:     #475569;
+      --subtle:    #64748b;
+      --meta:      #94a3b8;
+      --dim:       #cbd5e1;
+      --text:      #e2e8f0;
+      --overlay:   rgba(15,23,42,.97);
+      --map-bg:    #0f172a;
+      --shadow:    rgba(0,0,0,.5);
+      --stop-shadow: #0f172a;
+      --accent:    #008a75;
+      --line:      #821066;
+    }
+    html[data-theme="light"] {
+      --bg:        #f1f5f9;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --border2:   #e8eef4;
+      --muted:     #94a3b8;
+      --subtle:    #64748b;
+      --meta:      #64748b;
+      --dim:       #334155;
+      --text:      #0f172a;
+      --overlay:   rgba(241,245,249,.97);
+      --map-bg:    #e8eef4;
+      --shadow:    rgba(0,0,0,.15);
+      --stop-shadow: #ffffff;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh; height: 100dvh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: background .25s, color .25s;
+    }
+
+
+    /* ── Fejléc ──────────────────────────────────── */
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 16px; height: 50px;
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0; z-index: 1000;
+      transition: background .25s, border-color .25s;
+    }
+    .logo {
+      width: 50px; height: 50px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    header h1 { font-size: .9rem; font-weight: 600; letter-spacing: .01em; }
+
+    #status-badge {
+      font-size: .65rem; font-weight: 700; letter-spacing: .07em;
+      padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .badge-active  { background: #14532d; color: #4ade80; border: 1px solid #16a34a; }
+    .badge-depot   { background: #451a03; color: #fb923c; border: 1px solid #c2410c; }
+    .badge-loading { background: var(--surface); color: var(--meta); border: 1px solid var(--muted); }
+
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .refresh-label { font-size: .68rem; color: var(--subtle); white-space: nowrap; }
+    .refresh-bar-outer { width: 60px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .refresh-bar-inner { height: 100%; background: var(--accent); border-radius: 2px; transition: width 1s linear; }
+
+    .hdr-btn {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      color: var(--subtle); font-size: .75rem; padding: 4px 8px; cursor: pointer;
+      line-height: 1; transition: border-color .15s, color .15s;
+    }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Térkép ──────────────────────────────────── */
+    #map { flex: 1; background: var(--map-bg); }
+
+    .leaflet-container { background: var(--map-bg) !important; }
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important; color: var(--text) !important;
+      border: 1px solid var(--border); border-radius: 8px; box-shadow: none;
+    }
+    .leaflet-popup-tip { background: var(--surface) !important; }
+    .leaflet-popup-content { font-family: 'Segoe UI', system-ui, sans-serif; font-size: .82rem; line-height: 1.6; }
+    .leaflet-control-zoom a {
+      background: var(--surface) !important; color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--border) !important; }
+    .leaflet-control-attribution {
+      background: rgba(0,0,0,.25) !important; color: var(--subtle) !important;
+    }
+    .leaflet-control-attribution a { color: var(--meta) !important; }
+
+    .stop-label {
+      background: transparent !important; border: none !important;
+      box-shadow: none !important; padding: 0 !important;
+      color: var(--text); font-size: .65rem; font-weight: 600;
+      text-shadow: 0 0 4px var(--stop-shadow), 0 0 8px var(--stop-shadow);
+      white-space: nowrap; pointer-events: none;
+    }
+    .stop-label::before { display: none !important; }
+
+    /* ── Vonatjelölők ────────────────────────────── */
+    .train-wrap {
+      position: relative; width: 38px; height: 48px;
+      transform-origin: 19px 29px;
+    }
+    .train-circle {
+      position: absolute; bottom: 0; left: 0;
+      width: 38px; height: 38px; background: var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .train-circle.selected { background: #00c4a3; }
+    .train-circle.special  { background: #d97706; }
+    .train-circle.special.selected { background: #f59e0b; }
+    .train-dir {
+      position: absolute; top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 10px solid var(--accent);
+    }
+    .train-dir.selected { border-bottom-color: #00c4a3; }
+    .train-dir.special  { border-bottom-color: #d97706; }
+    .train-dir.special.selected { border-bottom-color: #f59e0b; }
+
+    /* ── Alsó lap ────────────────────────────────── */
+    #sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 92vh;
+      background: var(--surface);
+      border-radius: 20px 20px 0 0;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -8px 32px var(--shadow);
+      transform: translateY(92vh);
+      transition: transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s;
+      z-index: 500;
+      display: flex; flex-direction: column;
+      will-change: transform;
+    }
+
+    #sheet-handle {
+      padding: 10px 0 8px;
+      display: flex; justify-content: center; align-items: center;
+      flex-shrink: 0; cursor: grab; touch-action: none;
+    }
+    .handle-bar { width: 40px; height: 4px; background: var(--muted); border-radius: 2px; }
+
+    #sheet-peek {
+      padding: 0 16px 14px; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .sp-row1 {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .sp-consist { font-size: .78rem; color: var(--meta); flex: 1; }
+    .sp-route {
+      background: var(--line); color: #fff;
+      font-size: .7rem; font-weight: 700;
+      padding: 3px 9px; border-radius: 5px; letter-spacing: .05em;
+    }
+    .sp-status-badge {
+      font-size: .68rem; font-weight: 600; letter-spacing: .03em;
+      padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    }
+    .sp-status-badge.moving   { background: #14532d; color: #4ade80; }
+    .sp-status-badge.stopped  { background: #451a03; color: #fb923c; }
+    .sp-status-badge.arriving { background: #1e3a5f; color: #93c5fd; }
+
+    .sp-destination { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+    .sp-arrow { color: var(--accent); font-size: 1.2rem; font-weight: 700; }
+    .sp-dest  { font-size: 1.15rem; font-weight: 700; }
+
+    .sp-next {
+      background: var(--bg); border-radius: 10px; padding: 10px 14px;
+      display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    }
+    .sp-next-label { font-size: .7rem; color: var(--muted); flex-shrink: 0; }
+    .sp-next-name  { font-size: .9rem; font-weight: 600; flex: 1; }
+    .sp-next-time  { font-size: .9rem; font-weight: 700; flex-shrink: 0; }
+    .sp-next-time.predicted { color: #4ade80; }
+    .sp-next-time.scheduled { color: var(--meta); }
+
+    #sheet-hint {
+      text-align: center; padding: 6px 0 2px;
+      font-size: .7rem; color: var(--muted);
+      flex-shrink: 0; pointer-events: none;
+    }
+
+    #sheet-body {
+      flex: 1; min-height: 0; overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sb-list-title {
+      font-size: .62rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted);
+      padding: 12px 16px 6px;
+    }
+    .sb-stop-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 16px; border-bottom: 1px solid var(--bg);
+      font-size: .87rem;
+    }
+    .sb-stop-row:last-child { border-bottom: none; }
+    .sb-stop-left { display: flex; align-items: center; gap: 10px; }
+    .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+    .sb-dot.next   { background: #4ade80; }
+    .sb-stop-name  { color: var(--dim); }
+    .sb-stop-name.next { color: var(--text); font-weight: 600; }
+    .sb-stop-time  { color: var(--subtle); font-variant-numeric: tabular-nums; font-size: .82rem; }
+    .sb-stop-time.predicted { color: var(--meta); }
+    .sb-stop-time.next-pred { color: #4ade80; font-weight: 600; }
+    .sb-stop-row.past { opacity: 0.4; }
+    .sb-loading { padding: 20px 16px; color: var(--muted); text-align: center; font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+
+<header>
+  <div class="logo"><img src="Budapest_H5_HÉV.svg.png" style="width:100%;height:100%;object-fit:contain;" /></div>
+  <h1>H5 FIGYELŐ</h1>
+  <span id="status-badge" class="badge-loading">Betöltés…</span>
+  <div class="header-right">
+    <span class="refresh-label"><span id="s-countdown">10</span>s</span>
+    <div class="refresh-bar-outer"><div class="refresh-bar-inner" id="refresh-fill" style="width:0%"></div></div>
+    <button class="hdr-btn" id="theme-btn" onclick="toggleTheme()" title="Téma váltása">🌙</button>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<!-- ── Alsó lap ───────────────────────────────────── -->
+<div id="sheet">
+  <div id="sheet-handle"><div class="handle-bar"></div></div>
+
+  <div id="sheet-peek">
+    <div class="sp-destination" style="margin-bottom:6px">
+      <span class="sp-arrow">→</span>
+      <span class="sp-dest" id="sp-destination">—</span>
+      <span class="sp-route" style="margin-left:auto">H5</span>
+    </div>
+    <div class="sp-row1">
+      <span class="sp-consist" id="sp-consist">—</span>
+      <span id="sp-status-badge" class="sp-status-badge moving">Menetben</span>
+    </div>
+    <div class="sp-next">
+      <span class="sp-next-label">Következő:</span>
+      <span class="sp-next-name" id="sp-next-name">—</span>
+      <span class="sp-next-time" id="sp-next-time">—</span>
+    </div>
+  </div>
+
+
+  <div id="sheet-hint" style="display:none"></div>
+
+  <div id="sheet-body">
+    <div class="sb-list-title">Összes következő megálló</div>
+    <div id="sb-stop-list"><div class="sb-loading">Betöltés…</div></div>
+  </div>
+</div>
+
+<script>
+const REFRESH   = 10;
+const H5_BOUNDS = [[47.505, 19.018], [47.678, 19.095]];
+const BASE_URL  = 'https://futar.bkk.hu/api/query/v1/ws/otp/api/where';
+const TILE_URLS = {
+  dark:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+};
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
+
+const SPECIAL_CARS = new Set(['1131', '1132']);
+
+const STATUS_BADGE = {
+  IN_TRANSIT_TO: { cls: 'moving',   text: 'Menetben'  },
+  STOPPED_AT:    { cls: 'stopped',  text: 'Megállóban' },
+  INCOMING_AT:   { cls: 'arriving', text: 'Érkezőben'  },
+};
+
+const API_KEY    = 'c2d63282-63f2-4a9d-873b-04f67dc9f56d';
+let currentTheme = localStorage.getItem('theme') || 'dark';
+let selectedId   = null;
+let vehicleCache = {};
+let sheetState   = 'hidden';
+
+// ── Témaváltás ────────────────────────────────────
+const SHEET_H      = 0.92;
+const PEEK_FRAC    = 0.50;
+const PEEK_TRANS   = SHEET_H - PEEK_FRAC;
+
+function applyTheme(theme, animated) {
+  currentTheme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  document.getElementById('theme-btn').textContent = theme === 'dark' ? '🌙' : '☀️';
+  if (tileLayer) {
+    if (!animated) {
+      map.removeLayer(tileLayer);
+      tileLayer = L.tileLayer(TILE_URLS[theme], { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
+    } else {
+      const newLayer = L.tileLayer(TILE_URLS[theme], { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
+      setTimeout(() => { map.removeLayer(tileLayer); tileLayer = newLayer; }, 400);
+    }
+  }
+}
+function toggleTheme() { applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true); }
+
+// ── BKK API ───────────────────────────────────────
+async function apiGet(path, params = {}) {
+  const url = new URL(`${BASE_URL}/${path}`);
+  url.searchParams.set('key', API_KEY);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (json.status !== 'OK') throw new Error(json.text || 'API hiba');
+  return json.data;
+}
+
+// ── Térkép ────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).fitBounds(H5_BOUNDS, { padding: [24, 24] });
+map.setMinZoom(map.getZoom() - 1);
+let tileLayer = L.tileLayer(TILE_URLS[currentTheme], { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
+// apply saved theme icon without swapping tile layer again
+document.getElementById('theme-btn').textContent = currentTheme === 'dark' ? '🌙' : '☀️';
+document.documentElement.setAttribute('data-theme', currentTheme);
+
+map.createPane('stopsPane');
+map.getPane('stopsPane').style.zIndex = 420;
+
+// ── Polilínea dekódoló ────────────────────────────
+function decodePolyline(encoded) {
+  const coords = [];
+  let lat = 0, lng = 0, i = 0;
+  while (i < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    coords.push([lat / 1e5, lng / 1e5]);
+  }
+  return coords;
+}
+
+// ── Vonal és megállók (egyszer) ───────────────────
+let shapeLoaded = false, stopsLoaded = false;
+
+async function loadShapeAndStops() {
+  try {
+    const vd       = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
+    const vehicles = vd.list || [];
+    if (!vehicles.length) return;
+    const tripId   = vehicles[0].tripId;
+    const td       = await apiGet('trip-details', { tripId });
+    const entry    = td.entry || {};
+    const sref     = td.references?.stops || {};
+
+    if (!shapeLoaded && entry.polyline?.points) {
+      L.polyline(decodePolyline(entry.polyline.points), {
+        color: '#821066', weight: 5, opacity: 0.9, lineJoin: 'round', lineCap: 'round',
+      }).addTo(map);
+      shapeLoaded = true;
+    }
+
+    if (!stopsLoaded) {
+      const seen = new Set();
+      for (const st of entry.stopTimes || []) {
+        if (seen.has(st.stopId)) continue;
+        seen.add(st.stopId);
+        const s = sref[st.stopId] || {};
+        if (s.lat && s.lon) {
+          L.circleMarker([s.lat, s.lon], {
+            pane: 'stopsPane', radius: 5,
+            fillColor: '#fff', fillOpacity: 1, color: '#821066', weight: 2.5,
+          })
+          .bindTooltip(s.name || st.stopId, {
+            permanent: true, direction: 'right', offset: [9, 0], className: 'stop-label',
+          })
+          .addTo(map);
+        }
+      }
+      stopsLoaded = true;
+    }
+  } catch(e) { console.warn('vonal/megállók:', e); }
+}
+
+// ── Vonatjelölők ──────────────────────────────────
+const markers = {};
+
+function makeIcon(bearing, selected, special) {
+  const hasBearing = bearing != null;
+  const rot = hasBearing ? Math.round(bearing) : 0;
+  const sel = selected ? ' selected' : '';
+  const spc = special  ? ' special'  : '';
+  return L.divIcon({
+    className: '',
+    html: `<div class="train-wrap" style="transform:rotate(${rot}deg)">
+      ${hasBearing ? `<div class="train-dir${sel}${spc}"></div>` : ''}
+      <div class="train-circle${sel}${spc}" style="transform:rotate(${-rot}deg)">🚆</div>
+    </div>`,
+    iconSize: [38, 48], iconAnchor: [19, 29], popupAnchor: [0, -29],
+  });
+}
+
+function refreshIcon(id) {
+  if (!markers[id] || !vehicleCache[id]) return;
+  const v = vehicleCache[id];
+  markers[id].setIcon(makeIcon(v.bearing, id === selectedId, v.special));
+}
+
+function updateMarkers(vehicles) {
+  const seen = new Set();
+  for (const v of vehicles) {
+    seen.add(v.id);
+    vehicleCache[v.id] = v;
+    const icon = makeIcon(v.bearing, v.id === selectedId, v.special);
+    if (markers[v.id]) {
+      markers[v.id].setLatLng([v.lat, v.lon]);
+      markers[v.id].setIcon(icon);
+    } else {
+      markers[v.id] = L.marker([v.lat, v.lon], { icon }).addTo(map);
+      markers[v.id].on('click', () => selectVehicle(v.id));
+    }
+    if (v.id === selectedId) fillSheetBasic(v);
+  }
+  for (const id in markers) {
+    if (!seen.has(id)) {
+      map.removeLayer(markers[id]); delete markers[id]; delete vehicleCache[id];
+      if (id === selectedId) closeSheet();
+    }
+  }
+}
+
+// ── Alsó lap ──────────────────────────────────────
+const sheet       = document.getElementById('sheet');
+const sheetHandle = document.getElementById('sheet-handle');
+
+function setSheetState(state, animate = true) {
+  sheetState = state;
+  sheet.style.transition = animate
+    ? 'transform .35s cubic-bezier(0.32,0.72,0,1), background .25s, border-color .25s'
+    : 'background .25s, border-color .25s';
+  const vh = window.innerHeight;
+  sheet.style.transform =
+    state === 'hidden' ? `translateY(${vh * SHEET_H}px)` :
+    state === 'peek'   ? `translateY(${vh * PEEK_TRANS}px)` :
+                         'translateY(0)';
+  document.getElementById('sheet-hint').style.display =
+    state === 'peek' ? 'block' : 'none';
+  const bodyEl = document.getElementById('sheet-body');
+  if (state === 'hidden') {
+    bodyEl.style.overflowY = 'hidden';
+    bodyEl.style.maxHeight = '';
+  } else if (state === 'peek') {
+    bodyEl.style.overflowY = 'auto';
+    const nonBody = document.getElementById('sheet-handle').offsetHeight
+                  + document.getElementById('sheet-peek').offsetHeight;
+    bodyEl.style.maxHeight = Math.max(80, vh * PEEK_FRAC - nonBody) + 'px';
+  } else {
+    bodyEl.style.overflowY = 'auto';
+    bodyEl.style.maxHeight = '';
+  }
+}
+
+function closeSheet() {
+  selectedId = null;
+  setSheetState('hidden');
+  for (const id in vehicleCache) refreshIcon(id);
+}
+
+let dragStartY = null, dragBase = null;
+function getTranslateY() { return new DOMMatrix(getComputedStyle(sheet).transform).m42; }
+
+sheetHandle.addEventListener('touchstart', e => {
+  dragStartY = e.touches[0].clientY;
+  dragBase   = getTranslateY();
+  sheet.style.transition = 'none';
+}, { passive: true });
+
+sheetHandle.addEventListener('touchmove', e => {
+  if (dragStartY === null) return;
+  const vh      = window.innerHeight;
+  const clamped = Math.max(0, Math.min(vh * SHEET_H, dragBase + e.touches[0].clientY - dragStartY));
+  sheet.style.transform = `translateY(${clamped}px)`;
+}, { passive: true });
+
+sheetHandle.addEventListener('touchend', () => {
+  if (dragStartY === null) return;
+  const vh      = window.innerHeight;
+  const cur     = getTranslateY();
+  const peekY   = vh * PEEK_TRANS;
+  if (cur < peekY / 2)                    setSheetState('full');
+  else if (cur < (peekY + vh * SHEET_H) / 2) setSheetState('peek');
+  else                                     closeSheet();
+  dragStartY = null; dragBase = null;
+});
+
+sheetHandle.addEventListener('click', () => {
+  if (sheetState === 'peek') setSheetState('full');
+  else if (sheetState === 'full') setSheetState('peek');
+});
+
+map.on('click', closeSheet);
+
+// ── Oldalsáv tartalom ─────────────────────────────
+function fmtTime(ts) {
+  if (!ts) return null;
+  const d = new Date(ts * 1000);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function fillSheetBasic(v) {
+  document.getElementById('sp-consist').textContent     = v.consist.length ? v.consist.join(' · ') : v.id;
+  document.getElementById('sp-destination').textContent = v.headsign || '—';
+  const badge = STATUS_BADGE[v.status] || STATUS_BADGE.IN_TRANSIT_TO;
+  const el    = document.getElementById('sp-status-badge');
+  el.textContent = badge.text;
+  el.className   = `sp-status-badge ${badge.cls}`;
+}
+
+async function selectVehicle(id) {
+  if (selectedId === id) { closeSheet(); return; }
+  const prevId = selectedId;
+  selectedId   = id;
+  if (prevId) refreshIcon(prevId);
+  refreshIcon(id);
+
+  const v = vehicleCache[id];
+  if (!v) return;
+
+  fillSheetBasic(v);
+  document.getElementById('sp-next-name').textContent = '—';
+  document.getElementById('sp-next-time').textContent = '—';
+  document.getElementById('sb-stop-list').innerHTML   = '<div class="sb-loading">Betöltés…</div>';
+  setSheetState('peek');
+
+  try {
+    const td    = await apiGet('trip-details', { tripId: 'BKK_' + v.trip });
+    const entry = td.entry || {};
+    const sref  = td.references?.stops || {};
+    const times = entry.stopTimes || [];
+
+    const curIdx  = times.findIndex(st => st.stopId === v.rawStopId);
+    const nextIdx = (v.status === 'STOPPED_AT' && curIdx >= 0) ? curIdx + 1 : curIdx >= 0 ? curIdx : 0;
+    const nextSt  = times[nextIdx];
+
+    if (nextSt) {
+      const ts   = nextSt.predictedArrivalTime || nextSt.arrivalTime;
+      const pred = !!nextSt.predictedArrivalTime;
+      document.getElementById('sp-next-name').textContent = sref[nextSt.stopId]?.name || nextSt.stopId;
+      const tEl = document.getElementById('sp-next-time');
+      tEl.textContent = fmtTime(ts) || '—';
+      tEl.className   = 'sp-next-time ' + (pred ? 'predicted' : 'scheduled');
+    }
+
+    const past      = times.slice(0, nextIdx);
+    const remaining = times.slice(nextIdx);
+
+    const pastHtml = past.map(st => {
+      const name = sref[st.stopId]?.name || st.stopId;
+      const ts   = st.predictedDepartureTime || st.departureTime || st.predictedArrivalTime || st.arrivalTime;
+      return `<div class="sb-stop-row past">
+        <div class="sb-stop-left">
+          <div class="sb-dot"></div>
+          <span class="sb-stop-name">${name}</span>
+        </div>
+        <span class="sb-stop-time">${fmtTime(ts) || '—'}</span>
+      </div>`;
+    }).join('');
+
+    const futureHtml = remaining.map((st, i) => {
+      const name   = sref[st.stopId]?.name || st.stopId;
+      const ts     = st.predictedArrivalTime || st.arrivalTime;
+      const pred   = !!st.predictedArrivalTime;
+      const isNext = i === 0;
+      return `<div class="sb-stop-row">
+        <div class="sb-stop-left">
+          <div class="sb-dot${isNext ? ' next' : ''}"></div>
+          <span class="sb-stop-name${isNext ? ' next' : ''}">${name}</span>
+        </div>
+        <span class="sb-stop-time${isNext ? (pred ? ' next-pred' : ' scheduled') : (pred ? ' predicted' : '')}">${fmtTime(ts) || '—'}</span>
+      </div>`;
+    }).join('');
+
+    const listEl = document.getElementById('sb-stop-list');
+    listEl.innerHTML = (pastHtml + futureHtml) || '<div class="sb-loading">Nincs megálló</div>';
+
+    if (past.length > 0) {
+      const nextRow = listEl.querySelector('.sb-dot.next')?.closest('.sb-stop-row');
+      if (nextRow) setTimeout(() => nextRow.scrollIntoView({ block: 'nearest' }), 50);
+    }
+  } catch(e) {
+    document.getElementById('sb-stop-list').innerHTML = '<div class="sb-loading">Nem sikerült betölteni a menetrendet</div>';
+    console.warn('trip-details:', e);
+  }
+}
+
+// ── Visszaszámláló ────────────────────────────────
+let countdown = REFRESH, countdownInterval = null;
+const fillEl  = document.getElementById('refresh-fill');
+const countEl = document.getElementById('s-countdown');
+
+function startCountdown() {
+  countdown = REFRESH;
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    countdown = Math.max(0, countdown - 1);
+    countEl.textContent = countdown;
+    fillEl.style.width  = ((REFRESH - countdown) / REFRESH * 100) + '%';
+    if (countdown === 0) clearInterval(countdownInterval);
+  }, 1000);
+}
+
+// ── Lekérdezés ────────────────────────────────────
+async function poll() {
+  const badge = document.getElementById('status-badge');
+  try {
+    const data     = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
+    const stopsRef = data.references?.stops || {};
+    const tripsRef = data.references?.trips || {};
+    const vehicles = (data.list || [])
+      .filter(v => v.location?.lat && v.location?.lon)
+      .map(v => {
+        const stopId  = v.stopId || '';
+        const plate   = v.licensePlate || '';
+        const tripKey = v.tripId || '';
+        const consist = plate ? plate.split('-') : [];
+        return {
+          id:        plate || tripKey || 'ismeretlen',
+          trip:      tripKey.replace('BKK_', ''),
+          lat:       v.location.lat, lon: v.location.lon,
+          bearing:   v.bearing, status: v.status || '',
+          stopName:  stopsRef[stopId]?.name || stopId || '—',
+          rawStopId: stopId,
+          consist,
+          special:   consist.some(c => SPECIAL_CARS.has(c)),
+          headsign:  tripsRef[tripKey]?.tripHeadsign || null,
+        };
+      });
+
+    badge.textContent = vehicles.length ? `${vehicles.length} aktív` : 'Nincs jármű';
+    badge.className   = vehicles.length ? 'badge-active' : 'badge-depot';
+    updateMarkers(vehicles);
+  } catch(e) {
+    badge.textContent = e.message.includes('401') ? 'Érvénytelen API kulcs' : 'Hiba';
+    badge.className   = 'badge-depot';
+  }
+  startCountdown();
+  setTimeout(poll, REFRESH * 1000);
+}
+
+// ── Indítás ───────────────────────────────────────
+function init() {
+  shapeLoaded = false; stopsLoaded = false;
+  setSheetState('hidden', false);
+  loadShapeAndStops();
+  poll();
+}
+
+init();
+</script>
+</body>
+</html>
