@@ -29,7 +29,7 @@
       --map-bg:    #0f172a;
       --shadow:    rgba(0,0,0,.5);
       --stop-shadow: #0f172a;
-      --accent:    #008a75;
+      --accent:    #008f78;
       --line:      #821066;
     }
     html[data-theme="light"] {
@@ -395,60 +395,7 @@ function decodePolyline(encoded) {
 
 // ── Vonal és megállók (egyszer) ───────────────────
 let shapeLoaded = false, stopsLoaded = false;
-let routeCoords = [], routeCumDist = [];
-
-function buildRouteDists() {
-  routeCumDist = [0];
-  for (let i = 1; i < routeCoords.length; i++) {
-    const a = routeCoords[i-1], b = routeCoords[i];
-    routeCumDist.push(routeCumDist[i-1] + Math.hypot(b[0]-a[0], b[1]-a[1]));
-  }
-}
-
-// Project a lat/lon onto the nearest route segment, return cumulative distance
-function snapToDist(lat, lon) {
-  let bestDist = 0, bestD = Infinity;
-  for (let i = 0; i < routeCoords.length - 1; i++) {
-    const a = routeCoords[i], b = routeCoords[i+1];
-    const dx = b[0]-a[0], dy = b[1]-a[1];
-    const len2 = dx*dx + dy*dy;
-    const t = len2 > 0 ? Math.max(0, Math.min(1, ((lat-a[0])*dx+(lon-a[1])*dy)/len2)) : 0;
-    const d = (a[0]+t*dx-lat)**2 + (a[1]+t*dy-lon)**2;
-    if (d < bestD) {
-      bestD = d;
-      bestDist = routeCumDist[i] + t*(routeCumDist[i+1]-routeCumDist[i]);
-    }
-  }
-  return bestDist;
-}
-
-// Convert a cumulative distance back to a lat/lon on the route
-function distToLatLon(dist) {
-  const total = routeCumDist[routeCumDist.length-1];
-  dist = Math.max(0, Math.min(total, dist));
-  let lo = 0, hi = routeCoords.length - 1;
-  while (lo < hi - 1) {
-    const mid = (lo+hi) >> 1;
-    if (routeCumDist[mid] <= dist) lo = mid; else hi = mid;
-  }
-  const t = (dist - routeCumDist[lo]) / (routeCumDist[hi] - routeCumDist[lo]);
-  const a = routeCoords[lo], b = routeCoords[hi];
-  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
-}
-
-// Bearing of the route segment at a given distance (degrees, north=0)
-function routeBearing(dist, forward) {
-  const total = routeCumDist[routeCumDist.length-1];
-  dist = Math.max(0, Math.min(total, dist));
-  let lo = 0, hi = routeCoords.length - 1;
-  while (lo < hi - 1) {
-    const mid = (lo+hi) >> 1;
-    if (routeCumDist[mid] <= dist) lo = mid; else hi = mid;
-  }
-  const a = routeCoords[lo], b = routeCoords[hi];
-  const sign = forward ? 1 : -1;
-  return (Math.atan2((b[1]-a[1])*sign, (b[0]-a[0])*sign) * 180 / Math.PI + 360) % 360;
-}
+let routeCoords = [];
 
 async function loadShapeAndStops() {
   try {
@@ -462,7 +409,6 @@ async function loadShapeAndStops() {
 
     if (!shapeLoaded && entry.polyline?.points) {
       routeCoords = decodePolyline(entry.polyline.points);
-      buildRouteDists();
       L.polyline(routeCoords, {
         color: '#821066', weight: 5, opacity: 0.9, lineJoin: 'round', lineCap: 'round',
       }).addTo(map);
@@ -495,7 +441,6 @@ async function loadShapeAndStops() {
 const markers = {};
 const markerAnims = {};
 
-
 function makeIcon(bearing, selected, special) {
   const hasBearing = bearing != null;
   const rot = hasBearing ? Math.round(bearing) : 0;
@@ -523,25 +468,10 @@ function refreshIcon(id) {
     if (!markers[id]) { delete markerAnims[id]; continue; }
     const a = markerAnims[id];
     const t = Math.min(1, (now - a.startTime) / a.duration);
-    if (routeCumDist.length > 0) {
-      const dist = a.fromDist + (a.toDist - a.fromDist) * t;
-      markers[id].setLatLng(distToLatLon(dist));
-      if (vehicleCache[id]?.bearing != null) {
-        const deg = routeBearing(dist, a.toDist >= a.fromDist);
-        const el = markers[id].getElement();
-        if (el) {
-          const wrap = el.querySelector('.train-wrap');
-          const circle = el.querySelector('.train-circle');
-          if (wrap)   wrap.style.transform   = `rotate(${deg}deg)`;
-          if (circle) circle.style.transform = `rotate(${-deg}deg)`;
-        }
-      }
-    } else {
-      markers[id].setLatLng([
-        a.fromLat + (a.toLat - a.fromLat) * t,
-        a.fromLon + (a.toLon - a.fromLon) * t,
-      ]);
-    }
+    markers[id].setLatLng([
+      a.fromLat + (a.toLat - a.fromLat) * t,
+      a.fromLon + (a.toLon - a.fromLon) * t,
+    ]);
     if (t >= 1) delete markerAnims[id];
   }
   requestAnimationFrame(animateMarkers);
@@ -555,15 +485,11 @@ function updateMarkers(vehicles) {
     const icon = makeIcon(v.bearing, v.id === selectedId, v.special);
     if (markers[v.id]) {
       const cur = markers[v.id].getLatLng();
-      const anim = { startTime: Date.now(), duration: REFRESH * 1000 };
-      if (routeCumDist.length > 0) {
-        anim.fromDist = snapToDist(cur.lat, cur.lng);
-        anim.toDist   = snapToDist(v.lat, v.lon);
-      } else {
-        anim.fromLat = cur.lat; anim.fromLon = cur.lng;
-        anim.toLat   = v.lat;  anim.toLon   = v.lon;
-      }
-      markerAnims[v.id] = anim;
+      markerAnims[v.id] = {
+        startTime: Date.now(), duration: REFRESH * 1000,
+        fromLat: cur.lat, fromLon: cur.lng,
+        toLat: v.lat, toLon: v.lon,
+      };
       markers[v.id].setIcon(icon);
     } else {
       markers[v.id] = L.marker([v.lat, v.lon], { icon }).addTo(map);
