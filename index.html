@@ -516,19 +516,47 @@ let stopIdsForName = {};
 
 async function loadShapeAndStops() {
   try {
-    const vd       = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
-    const vehicles = vd.list || [];
-    if (!vehicles.length) return;
-    const trRef    = vd.references?.trips || {};
+    const vd    = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
+    const trRef = vd.references?.trips || {};
 
-    // Collect one trip ID per direction (headsign)
-    const tripIds = [];
+    // Collect trip IDs – prefer Szentendre-bound (longer route)
+    const tripIds  = [];
     const seenSign = new Set();
-    for (const v of vehicles) {
+    for (const v of (vd.list || [])) {
+      if (!v.tripId || tripIds.includes(v.tripId)) continue;
       const sign = trRef[v.tripId]?.tripHeadsign || '';
-      if (!seenSign.has(sign)) { seenSign.add(sign); tripIds.push(v.tripId); }
+      if (sign.toLowerCase().includes('szentendre')) {
+        tripIds.unshift(v.tripId);
+      } else if (!seenSign.has(sign)) {
+        tripIds.push(v.tripId);
+      }
+      seenSign.add(sign);
       if (tripIds.length >= 2) break;
     }
+
+    // No active vehicles – find a trip from upcoming schedule via stops-for-route
+    if (!tripIds.length) {
+      try {
+        const srd = await apiGet('stops-for-route', { id: 'BKK_H5' });
+        const collectIds = gs => (gs || []).flatMap(g => [...(g.stopIds || []), ...collectIds(g.stopGroupings)]);
+        const allStopIds = [...new Set(collectIds(srd.entry?.stopGroupings))];
+        for (const stopId of allStopIds.slice(0, 3)) {
+          const ard      = await apiGet('arrivals-and-departures-for-stop', {
+            stopId, minutesBefore: 0, minutesAfter: 1440,
+          });
+          const refTrips = ard.references?.trips || {};
+          for (const dep of (ard.entry?.stopTimes || [])) {
+            if (!dep.tripId) continue;
+            const sign = refTrips[dep.tripId]?.tripHeadsign || '';
+            if (!seenSign.has(sign)) { seenSign.add(sign); tripIds.push(dep.tripId); }
+            if (tripIds.length >= 2) break;
+          }
+          if (tripIds.length >= 2) break;
+        }
+      } catch(e) { console.warn('[H5] fallback trip keresés:', e); }
+    }
+
+    if (!tripIds.length) return;
 
     const tds   = await Promise.all(tripIds.map(id => apiGet('trip-details', { tripId: id })));
     const td    = tds[0];
@@ -544,11 +572,10 @@ async function loadShapeAndStops() {
     }
 
     if (!stopsLoaded) {
-      // Build name → [stopIds] from all direction trips
       stopIdsForName = {};
       for (const t of tds) {
         const sr = t.references?.stops || {};
-        for (const st of t.entry?.stopTimes || []) {
+        for (const st of (t.entry?.stopTimes || [])) {
           const s = sr[st.stopId] || {};
           const name = s.name || st.stopId;
           if (!stopIdsForName[name]) stopIdsForName[name] = [];
@@ -556,9 +583,8 @@ async function loadShapeAndStops() {
         }
       }
 
-      // Place one marker per stop name (using first trip's coordinates)
       const seen = new Set();
-      for (const st of entry.stopTimes || []) {
+      for (const st of (entry.stopTimes || [])) {
         const s = sref[st.stopId] || {};
         if (!s.lat || !s.lon) continue;
         const sname = s.name || st.stopId;
@@ -578,7 +604,7 @@ async function loadShapeAndStops() {
       }
       stopsLoaded = true;
     }
-  } catch(e) { console.warn('vonal/megállók:', e); }
+  } catch(e) { console.error('[H5] vonal/megállók betöltés hiba:', e); }
 }
 
 // ── Vonatjelölők ──────────────────────────────────
@@ -1206,6 +1232,7 @@ async function poll() {
     badge.textContent = vehicles.length ? `${vehicles.length} aktív` : 'Nincs jármű';
     badge.className   = vehicles.length ? 'badge-active' : 'badge-depot';
     updateMarkers(vehicles);
+    if (!shapeLoaded || !stopsLoaded) loadShapeAndStops();
   } catch(e) {
     badge.textContent = e.message.includes('401') ? 'Érvénytelen API kulcs' : 'Hiba';
     badge.className   = 'badge-depot';
