@@ -351,7 +351,7 @@
   <div class="header-right">
     <span class="refresh-label"><span id="s-countdown">10</span>s</span>
     <div class="refresh-bar-outer"><div class="refresh-bar-inner" id="refresh-fill" style="width:0%"></div></div>
-    <button class="hdr-btn" id="notif-btn" onclick="toggleNotif1130()" title="Értesítés az 1130-as kocsiról">🔕</button>
+    <button class="hdr-btn" id="notif-btn" onclick="toggleNotif1131()" title="Értesítés az 1131-as kocsiról">🔕</button>
     <button class="hdr-btn" id="theme-btn" onclick="toggleTheme()" title="Téma váltása">🌙</button>
   </div>
 </header>
@@ -436,42 +436,42 @@ const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM<
 
 const SPECIAL_CARS = new Set(['1131', '1132']);
 
-// ── 1130-as értesítés ─────────────────────────────
-let notif1130Enabled   = localStorage.getItem('notif1130') === '1';
-let notif1130WasActive = false;
+// ── 1131-as értesítés ─────────────────────────────
+let notif1131Enabled   = localStorage.getItem('notif1131') === '1';
+let notif1131WasActive = false;
 
-async function toggleNotif1130() {
-  if (!notif1130Enabled) {
+async function toggleNotif1131() {
+  if (!notif1131Enabled) {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'default') {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') return;
     }
     if (Notification.permission !== 'granted') return;
-    notif1130Enabled = true;
-    localStorage.setItem('notif1130', '1');
+    notif1131Enabled = true;
+    localStorage.setItem('notif1131', '1');
   } else {
-    notif1130Enabled = false;
-    localStorage.setItem('notif1130', '0');
+    notif1131Enabled = false;
+    localStorage.setItem('notif1131', '0');
   }
   updateNotifBtn();
 }
 
 function updateNotifBtn() {
   const btn = document.getElementById('notif-btn');
-  if (btn) btn.textContent = notif1130Enabled ? '🔔' : '🔕';
+  if (btn) btn.textContent = notif1131Enabled ? '🔔' : '🔕';
 }
 
-function checkNotif1130(vehicles) {
-  if (!notif1130Enabled || Notification.permission !== 'granted') return;
-  const isActive = vehicles.some(v => v.consist.includes('1130'));
-  if (isActive && !notif1130WasActive) {
-    new Notification('H5 Figyelő — 1130-as kocsi', {
-      body: 'Az 1130-as kocsi most menetben van! 🚆',
+function checkNotif1131(vehicles) {
+  if (!notif1131Enabled || Notification.permission !== 'granted') return;
+  const isActive = vehicles.some(v => v.consist.includes('1131'));
+  if (isActive && !notif1131WasActive) {
+    new Notification('H5 Figyelő — Klímás hév', {
+      body: 'A klímás hév most menetben van!',
       icon: './Budapest_H5_HÉV.svg.png',
     });
   }
-  notif1130WasActive = isActive;
+  notif1131WasActive = isActive;
 }
 
 const STATUS_BADGE = {
@@ -1296,7 +1296,7 @@ async function poll() {
     badge.textContent = vehicles.length ? `${vehicles.length} aktív` : 'Nincs jármű';
     badge.className   = vehicles.length ? 'badge-active' : 'badge-depot';
     updateMarkers(vehicles);
-    checkNotif1130(vehicles);
+    checkNotif1131(vehicles);
     if (!shapeLoaded || !stopsLoaded) loadShapeAndStops();
   } catch(e) {
     badge.textContent = e.message.includes('401') ? 'Érvénytelen API kulcs' : 'Hiba';
