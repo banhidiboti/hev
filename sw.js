@@ -1,4 +1,4 @@
-const CACHE = 'h5-v8';
+const CACHE = 'h5-v9';
 const SHELL = [
   './',
   './index.html',
