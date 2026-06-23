@@ -519,49 +519,45 @@ async function loadShapeAndStops() {
     const vd    = await apiGet('vehicles-for-route', { routeId: 'BKK_H5' });
     const trRef = vd.references?.trips || {};
 
-    // Collect trip IDs – prefer Szentendre-bound (longer route)
-    const tripIds  = [];
-    const seenSign = new Set();
+    // For Batthyány: prefer the northernmost active vehicle (guarantees a full-length trip
+    // covering all stops including those north of Békásmegyer).
+    let szTripId = null, baTripId = null, baLat = -Infinity;
     for (const v of (vd.list || [])) {
-      if (!v.tripId || tripIds.includes(v.tripId)) continue;
-      const sign = trRef[v.tripId]?.tripHeadsign || '';
-      if (sign.toLowerCase().includes('szentendre')) {
-        tripIds.unshift(v.tripId);
-      } else if (!seenSign.has(sign)) {
-        tripIds.push(v.tripId);
+      if (!v.tripId) continue;
+      const sign = (trRef[v.tripId]?.tripHeadsign || '').toLowerCase();
+      if (!szTripId && sign.includes('szentendre')) {
+        szTripId = v.tripId;
+      } else if (!sign.includes('szentendre') && (v.location?.lat ?? -Infinity) > baLat) {
+        baTripId = v.tripId;
+        baLat    = v.location?.lat ?? -Infinity;
       }
-      seenSign.add(sign);
-      if (tripIds.length >= 2) break;
     }
 
-    // No active vehicles – find a trip from upcoming schedule via stops-for-route
-    if (!tripIds.length) {
+    // If no Szentendre trip from active vehicles, find one from the schedule
+    if (!szTripId) {
       try {
         const srd = await apiGet('stops-for-route', { id: 'BKK_H5' });
         const collectIds = gs => (gs || []).flatMap(g => [...(g.stopIds || []), ...collectIds(g.stopGroupings)]);
         const allStopIds = [...new Set(collectIds(srd.entry?.stopGroupings))];
-        for (const stopId of allStopIds.slice(0, 3)) {
-          const ard      = await apiGet('arrivals-and-departures-for-stop', {
-            stopId, minutesBefore: 0, minutesAfter: 1440,
-          });
+        outer: for (const stopId of allStopIds.slice(0, 10)) {
+          const ard      = await apiGet('arrivals-and-departures-for-stop', { stopId, minutesBefore: 0, minutesAfter: 1440 });
           const refTrips = ard.references?.trips || {};
           for (const dep of (ard.entry?.stopTimes || [])) {
             if (!dep.tripId) continue;
-            const sign = refTrips[dep.tripId]?.tripHeadsign || '';
-            if (!seenSign.has(sign)) { seenSign.add(sign); tripIds.push(dep.tripId); }
-            if (tripIds.length >= 2) break;
+            if ((refTrips[dep.tripId]?.tripHeadsign || '').toLowerCase().includes('szentendre')) {
+              szTripId = dep.tripId; break outer;
+            }
           }
-          if (tripIds.length >= 2) break;
         }
-      } catch(e) { console.warn('[H5] fallback trip keresés:', e); }
+      } catch(e) { console.warn('[H5] SZ fallback trip keresés:', e); }
     }
 
-    if (!tripIds.length) return;
+    if (!szTripId) return;
 
-    const tds   = await Promise.all(tripIds.map(id => apiGet('trip-details', { tripId: id })));
-    const td    = tds[0];
-    const entry = td.entry || {};
-    const sref  = td.references?.stops || {};
+    // Fetch Szentendre trip details (needed for shape and to locate a northern stop)
+    const szTd  = await apiGet('trip-details', { tripId: szTripId });
+    const entry = szTd.entry || {};
+    const sref  = szTd.references?.stops || {};
 
     if (!shapeLoaded && entry.polyline?.points) {
       routeCoords = decodePolyline(entry.polyline.points);
@@ -572,12 +568,37 @@ async function loadShapeAndStops() {
     }
 
     if (!stopsLoaded) {
+      // If no Batthyány trip yet, find one by querying a stop north of Békásmegyer
+      // (lat > 47.59 ≈ Csillaghegy). Any trip departing from there towards Batthyány
+      // must be a full-length trip covering all northern stops.
+      if (!baTripId) {
+        const northStop = (entry.stopTimes || []).find(st => (sref[st.stopId]?.lat || 0) > 47.59);
+        if (northStop) {
+          try {
+            const ard      = await apiGet('arrivals-and-departures-for-stop', { stopId: northStop.stopId, minutesBefore: 0, minutesAfter: 1440 });
+            const refTrips = ard.references?.trips || {};
+            for (const dep of (ard.entry?.stopTimes || [])) {
+              if (!dep.tripId) continue;
+              if (!(refTrips[dep.tripId]?.tripHeadsign || '').toLowerCase().includes('szentendre')) {
+                baTripId = dep.tripId; break;
+              }
+            }
+          } catch(e) { console.warn('[H5] BA trip keresés:', e); }
+        }
+      }
+
+      // Build stopIdsForName from trip-details of both directions
+      // (trip-details references guarantee exact name match with displayed stop labels)
       stopIdsForName = {};
-      for (const t of tds) {
+      const allTds = [szTd];
+      if (baTripId) {
+        try { allTds.push(await apiGet('trip-details', { tripId: baTripId })); }
+        catch(e) { console.warn('[H5] BA trip-details:', e); }
+      }
+      for (const t of allTds) {
         const sr = t.references?.stops || {};
         for (const st of (t.entry?.stopTimes || [])) {
-          const s = sr[st.stopId] || {};
-          const name = s.name || st.stopId;
+          const name = (sr[st.stopId] || {}).name || st.stopId;
           if (!stopIdsForName[name]) stopIdsForName[name] = [];
           if (!stopIdsForName[name].includes(st.stopId)) stopIdsForName[name].push(st.stopId);
         }
