@@ -927,6 +927,19 @@ function stopDisplayTimeIsPredicted(st) {
   return !!(st.predictedDepartureTime || st.predictedArrivalTime);
 }
 
+function nearestStopIndexByGPS(times, sref, lat, lon) {
+  if (lat == null || lon == null) return -1;
+  let best = -1, bestD = Infinity;
+  times.forEach((st, i) => {
+    const s = sref[st.stopId];
+    if (!s || s.lat == null || s.lon == null) return;
+    const dLat = s.lat - lat, dLon = (s.lon - lon) * Math.cos(lat * Math.PI / 180);
+    const d = dLat * dLat + dLon * dLon;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
 function minutesUntil(ts) {
   if (!ts) return null;
   return Math.max(0, Math.round((displayMinuteTs(ts) * 1000 - Date.now()) / 60000));
@@ -1196,13 +1209,23 @@ async function selectVehicle(id) {
     const times = entry.stopTimes || [];
 
     const curIdx = times.findIndex(st => st.stopId === v.rawStopId);
+    const gpsIdx = nearestStopIndexByGPS(times, sref, v.lat, v.lon);
+
+    // A BKK real-time "stopId" mezője irányváltás után néhány percig elavult
+    // tudott maradni — ha jelentősen eltér a GPS-pozíció alapján legközelebbi
+    // megállótól, a GPS-nek hiszünk, nem a (potenciálisan elavult) mezőnek.
+    const trustworthy = curIdx >= 0 && (gpsIdx < 0 || Math.abs(gpsIdx - curIdx) <= 2);
+    const baseIdx = trustworthy ? curIdx : gpsIdx;
+
     let nextIdx;
-    if (curIdx >= 0) {
-      nextIdx = (v.status === 'STOPPED_AT') ? curIdx + 1 : curIdx;
+    if (trustworthy) {
+      nextIdx = (v.status === 'STOPPED_AT') ? baseIdx + 1 : baseIdx;
+    } else if (baseIdx >= 0) {
+      const nowSec = Date.now() / 1000;
+      const ts     = stopDisplayTime(times[baseIdx]);
+      nextIdx = (ts != null && ts < nowSec - 30) ? baseIdx + 1 : baseIdx;
     } else {
-      // rawStopId nem található ebben a menetrendben (pl. hiányzó/eltérő real-time
-      // stopId) — idő alapján keressük meg a legközelebbi jövőbeli megállót ahelyett,
-      // hogy tévesen az induló állomásra esnénk vissza.
+      // se stopId-egyezés, se GPS-egyezés — idő alapján a legközelebbi jövőbeli megálló
       const nowSec = Date.now() / 1000;
       nextIdx = times.findIndex(st => (stopDisplayTime(st) || 0) >= nowSec);
       if (nextIdx === -1) nextIdx = times.length;
